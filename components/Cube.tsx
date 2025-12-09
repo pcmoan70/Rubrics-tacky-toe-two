@@ -87,17 +87,6 @@ const Sticker: React.FC<StickerProps> = ({ index, color, onClick, active }) => {
   );
 };
 
-// The core cube body (black)
-const BaseCube = () => {
-  // We can just use a single black rounded box, or 27 cubies for realism.
-  // Single box is performant and sufficient since stickers are overlays.
-  return (
-    <RoundedBox args={[3, 3, 3]} radius={0.1} smoothness={4}>
-      <meshStandardMaterial color="#111" />
-    </RoundedBox>
-  );
-};
-
 // Helper to determine which sticker indices belong to a move group for animation
 // This is purely for visual grouping.
 // When we rotate 'U', we need to capture all stickers that are logically on the U face,
@@ -552,7 +541,13 @@ const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase }:
   return (
     <group position={position} ref={ref}>
       <RoundedBox args={[0.98, 0.98, 0.98]} radius={0.05} smoothness={4}>
-        <meshStandardMaterial color="#1a1a1a" roughness={0.6} />
+        <meshStandardMaterial 
+          color="#333" 
+          roughness={0.2} 
+          metalness={0.6}
+          transparent={true}
+          opacity={0.5}
+        />
       </RoundedBox>
       {myStickers.map(({ face, idx }) => (
         <CubieSticker 
@@ -596,7 +591,9 @@ const CubieSticker = ({ face, color, onClick, active }: any) => {
       <meshStandardMaterial 
         color={active && hover ? HOVER_COLOR : color} 
         roughness={0.2} 
-        metalness={0.0} 
+        metalness={0.0}
+        transparent={true}
+        opacity={0.9}
       />
     </mesh>
   );

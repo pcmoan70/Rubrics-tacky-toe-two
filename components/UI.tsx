@@ -34,7 +34,7 @@ export const UI = () => {
         
         {/* Title */}
         <div className="bg-black/80 backdrop-blur-md text-white px-6 py-3 rounded-xl border border-white/10 shadow-2xl text-center hidden md:block">
-           <h1 className="text-xl font-bold tracking-wider bg-gradient-to-r from-pink-500 to-yellow-500 bg-clip-text text-transparent">RUBIK'S TAC TOE</h1>
+           <h1 className="text-xl font-bold tracking-wider bg-gradient-to-r from-pink-500 to-yellow-500 bg-clip-text text-transparent">RUBIK'S TACKY TOE</h1>
            <div className="text-xs text-gray-400 mt-1">
              {phase === 'PLACE' ? 'PLACE A TILE' : phase === 'TWIST' ? 'TWIST A FACE' : 'GAME OVER'}
            </div>
