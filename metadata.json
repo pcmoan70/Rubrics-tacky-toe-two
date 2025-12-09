@@ -1,0 +1,5 @@
+{
+  "name": "Rubik's Tacky Toe",
+  "description": "A strategic 3D puzzle game combining Rubik's Cube mechanics with Tic-Tac-Toe scoring. Place tiles, twist faces, and dominate the cube!",
+  "requestFramePermissions": []
+}
