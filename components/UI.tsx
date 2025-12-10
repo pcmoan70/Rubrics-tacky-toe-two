@@ -94,6 +94,7 @@ export const UI = () => {
         {phase === 'TWIST' && !winner && (
           <div className="bg-black/80 backdrop-blur p-4 rounded-2xl border border-white/10 animate-slide-up max-w-[90vw] overflow-x-auto">
              <p className="text-gray-300 text-xs mb-2 text-center uppercase tracking-widest">Rotate Face</p>
+             <p className="text-[10px] text-gray-400 text-center mb-2">Click a face to show arrow. Click arrow to twist.</p>
              <div className="flex gap-4">
                 {(['U', 'D', 'F', 'B', 'L', 'R'] as Face[]).map(face => (
                   <div key={face} className="flex flex-col items-center gap-1">
@@ -137,6 +138,7 @@ const ScoreCard = ({ pid, active, score }: any) => {
       <div className="text-[10px] text-gray-500 flex flex-col gap-0.5">
         <div className="flex justify-between"><span>Lines</span><span>{score.lines}</span></div>
         <div className="flex justify-between"><span>Squares</span><span>{score.squares}</span></div>
+        <div className="flex justify-between"><span>Crosses</span><span>{score.crosses}</span></div>
         <div className="flex justify-between"><span>Faces</span><span>{score.faces}</span></div>
       </div>
     </div>

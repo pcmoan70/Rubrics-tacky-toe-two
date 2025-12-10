@@ -1,170 +1,39 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { RoundedBox, Text } from '@react-three/drei';
+import { useThree } from '@react-three/fiber';
+import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGameStore } from '../store';
-import { FACE_OFFSETS, HOVER_COLOR } from '../constants';
+import { HOVER_COLOR } from '../constants';
 import { Face } from '../types';
 
-// Geometry for a single sticker (a thin plane or very flat box)
-const StickerGeometry = new THREE.PlaneGeometry(0.85, 0.85);
-
-interface StickerProps {
-  index: number; // 0-53
-  color: string;
-  onClick: () => void;
-  active: boolean;
-}
-
-const Sticker: React.FC<StickerProps> = ({ index, color, onClick, active }) => {
-  const [hovered, setHover] = useState(false);
-  
-  // Calculate position/rotation based on index
-  // 0-8 U, 9-17 L, 18-26 F, 27-35 R, 36-44 B, 45-53 D
-  
-  const getTransform = (i: number): { pos: [number, number, number], rot: [number, number, number] } => {
-    let faceIndex = 0;
-    let localIndex = 0;
-    
-    if (i < 9) { faceIndex = 0; localIndex = i; } // U
-    else if (i < 18) { faceIndex = 1; localIndex = i - 9; } // L
-    else if (i < 27) { faceIndex = 2; localIndex = i - 18; } // F
-    else if (i < 36) { faceIndex = 3; localIndex = i - 27; } // R
-    else if (i < 45) { faceIndex = 4; localIndex = i - 36; } // B
-    else { faceIndex = 5; localIndex = i - 45; } // D
-
-    // Grid 3x3:
-    // 0 1 2
-    // 3 4 5
-    // 6 7 8
-    const col = localIndex % 3;
-    const row = Math.floor(localIndex / 3);
-    const x = (col - 1) * 1.0;
-    const y = -(row - 1) * 1.0; // In 2D face coordinates, Y goes down
-
-    // Map 2D face coord to 3D
-    // Offset from center is 1.51 (slightly above cube surface of radius 1.5)
-    const OFFSET = 1.51;
-    
-    switch (faceIndex) {
-      case 0: // U (Top) -> Face Normal Y+
-        return { pos: [x, OFFSET, -y], rot: [-Math.PI / 2, 0, 0] };
-      case 1: // L (Left) -> Face Normal X-
-        return { pos: [-OFFSET, y, -x], rot: [0, -Math.PI / 2, 0] };
-      case 2: // F (Front) -> Face Normal Z+
-        return { pos: [x, y, OFFSET], rot: [0, 0, 0] };
-      case 3: // R (Right) -> Face Normal X+
-        return { pos: [OFFSET, y, x], rot: [0, Math.PI / 2, 0] };
-      case 4: // B (Back) -> Face Normal Z-
-        return { pos: [-x, y, -OFFSET], rot: [0, Math.PI, 0] };
-      case 5: // D (Bottom) -> Face Normal Y-
-        return { pos: [x, -OFFSET, y], rot: [Math.PI / 2, 0, 0] };
-      default:
-        return { pos: [0, 0, 0], rot: [0, 0, 0] };
-    }
-  };
-
-  const { pos, rot } = getTransform(index);
-
-  return (
-    <mesh
-      position={pos}
-      rotation={rot}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (active) onClick();
-      }}
-      onPointerOver={(e) => { e.stopPropagation(); if(active) setHover(true); }}
-      onPointerOut={(e) => { e.stopPropagation(); setHover(false); }}
-    >
-      <planeGeometry args={[0.9, 0.9]} />
-      <meshStandardMaterial 
-        color={hovered && active ? HOVER_COLOR : color} 
-        roughness={0.5}
-        metalness={0.1}
-      />
-    </mesh>
-  );
-};
-
-// Helper to determine which sticker indices belong to a move group for animation
-// This is purely for visual grouping.
-// When we rotate 'U', we need to capture all stickers that are logically on the U face,
-// AND the stickers on the side faces that are part of the U slice.
-// BUT, since we are just mapping stickers to positions based on index, 
-// animating them is tricky if we don't change their parent.
-// Alternative: We rotate the Camera or the whole Cube? No, we need slice rotation.
-// Solution: We don't animate the *stickers* individually. 
-// We create a `Group` for the slice, add the relevant meshes to it, animate the group, 
-// then unparent them.
-// Actually, standard React-Three pattern: 
-// 1. We keep stickers in a static list.
-// 2. We use a `useFrame` or `spring` to modify a `rotation` prop on a `Group` that wraps the specific subset?
-// This is hard because stickers change groups.
-// EASIER: We only render the *static* state.
-// If we want animation, we can temporarily hide the static stickers and show a "Animation Puppet" group that rotates.
-// Let's implement that.
-
-const AnimationPuppet = ({ face, clockwise, onComplete, stickers }: { face: Face, clockwise: boolean, onComplete: () => void, stickers: any[] }) => {
-  const groupRef = useRef<THREE.Group>(null);
-  const [progress, setProgress] = useState(0);
-
-  // We need to clone the stickers that are moving.
-  // Which ones? The face stickers + the ring.
-  // It's actually easier to just identify which *Cubies* (visual blocks) are moving.
-  // But we have a solid black box + stickers.
-  // So we just take the stickers.
-  
-  // Simplified: Just 9 stickers on face + 12 stickers on ring?
-  // Let's just animate the whole face of the cube?
-  // A slice contains 9 cubies.
-  // Since we use a solid box, we can't slice it.
-  // WE NEED 27 CUBIES for visual rotation.
-  // Change of plan: Render 27 individual cubies (black boxes) with stickers attached.
-  
-  // Handled in `ComplexCube` below.
-  return null;
-};
-
 // --- 27 Cubies Implementation ---
-// Position of 27 cubies: x,y,z in {-1, 0, 1}
 const CUBIE_POSITIONS: [number, number, number][] = [];
 for(let x=-1; x<=1; x++)
   for(let y=-1; y<=1; y++)
     for(let z=-1; z<=1; z++)
       CUBIE_POSITIONS.push([x, y, z]);
 
-// We need to map the 54 logic stickers to the 27 cubies.
-// Each cubie has up to 3 stickers.
-// This mapping is complex to maintain during rotation.
-// PROPOSAL:
-// Since the prompt asks for "Twist", but doesn't strictly require *smooth 3D interpolation* of the twist
-// (though it says "Make a 3D game with this as an animation"),
-// and doing a true Rubik's engine in one file is risky:
-// I will implement a "Simple Snap" rotation if 27-cubie logic is too heavy.
-// BUT, let's try a visual trick.
-// When rotating U:
-// We create a Group at (0,0,0).
-// We attach all meshes (cubies) that have y=1.
-// We rotate the group.
-// On finish, we detach and update the logical `stickers` array (colors).
-// We then reset the cubies to rotation 0, position original.
-// Since the `stickers` state controls the color, updating it will repaint the cube in the new config.
-// So we just need to animate the visual mesh, then snap back.
+const FACE_CENTERS: Record<Face, THREE.Vector3> = {
+  U: new THREE.Vector3(0, 1.6, 0),
+  D: new THREE.Vector3(0, -1.6, 0),
+  F: new THREE.Vector3(0, 0, 1.6),
+  B: new THREE.Vector3(0, 0, -1.6),
+  R: new THREE.Vector3(1.6, 0, 0),
+  L: new THREE.Vector3(-1.6, 0, 0),
+};
 
 export const RubiksCube = () => {
   const { stickers, phase, placeTile, rotateFace, setIsAnimating, isAnimating } = useGameStore();
   
-  // Ref to the group of all 27 cubies
   const cubiesRef = useRef<(THREE.Object3D | null)[]>([]);
   const groupRef = useRef<THREE.Group>(null);
   
-  // Animation state
-  const animationRef = useRef<{ face: Face, clockwise: boolean, progress: number } | null>(null);
+  // Selection state for Twist Phase
+  // stores which face is selected and the pending direction
+  const [selection, setSelection] = useState<{ face: Face, clockwise: boolean } | null>(null);
 
   // Helper: Get cubies belonging to a face
   const getCubiesForFace = (face: Face) => {
-    // Indices in CUBIE_POSITIONS
     return CUBIE_POSITIONS.map((pos, idx) => {
       const [x, y, z] = pos;
       switch(face) {
@@ -178,209 +47,90 @@ export const RubiksCube = () => {
     }).filter(i => i !== -1);
   };
 
-  useFrame((state, delta) => {
-    if (animationRef.current && groupRef.current) {
-      const anim = animationRef.current;
-      const speed = 5.0; // Radians per second approx
-      anim.progress += delta * speed;
-      
-      const targetRot = Math.PI / 2 * (anim.clockwise ? -1 : 1);
-      
-      // Interpolate
-      let currentRot = 0;
-      let finished = false;
-
-      if (anim.progress >= Math.PI / 2) {
-        currentRot = targetRot;
-        finished = true;
-      } else {
-         // Linear is fine, or simple ease
-         currentRot = targetRot * (anim.progress / (Math.PI/2));
-      }
-
-      // Apply rotation to the temporary group
-      switch(anim.face) {
-        case 'U': groupRef.current.rotation.y = currentRot; break;
-        case 'D': groupRef.current.rotation.y = -currentRot; break; // D is opposite y
-        case 'R': groupRef.current.rotation.x = currentRot; break;
-        case 'L': groupRef.current.rotation.x = -currentRot; break;
-        case 'F': groupRef.current.rotation.z = currentRot; break;
-        case 'B': groupRef.current.rotation.z = -currentRot; break;
-      }
-
-      if (finished) {
-        // Commit
-        // 1. Reset group rotation
-        groupRef.current.rotation.set(0,0,0);
-        
-        // 2. Ungroup (attach back to scene/parent logic not needed since we just used a pivot group?)
-        // Actually, we moved the refs into the group. We need to move them back?
-        // With Three.js `attach`, they stay relative.
-        // EASIER WAY:
-        // Just call the store's `rotateFace` which updates the colors.
-        // AND Reset the rotation of the visual group to 0. 
-        // Since the colors update, the visual "snap back" will look identical to the finished rotation.
-        
-        // We need to ensure we call the store action exactly once.
-        const { face, clockwise } = animationRef.current;
-        animationRef.current = null;
-        
-        // Reset the group children?
-        // The meshes are children of `groupRef`. We want them to go back to being children of main cube?
-        // Or just leave them and rely on the fact that `rotateFace` permutes colors?
-        // If we leave them rotated, the next animation will be weird.
-        // We MUST reset the meshes' physical transforms to identity and rely on `stickers` array for state.
-        
-        // Detach children back to world/parent? 
-        // In React Three Fiber, declarative structure makes reparenting hard.
-        // We will just NOT reparent. We will rotate the specific meshes manually in the frame loop?
-        // No, using a Group is best.
-        // 
-        // Hacky but robust solution:
-        // We aren't actually moving the *cubies* in the data structure.
-        // We are just rotating the view. 
-        // Once done, we snap rotation back to 0, and simultaneously update the colors.
-        // So:
-        // Frame N (end): Rotation is 90. Visuals match rotated state.
-        // Call store.rotateFace() -> Colors array updates to match the rotation.
-        // Reset Rotation to 0 -> Visuals (now with new colors) match the rotated state.
-        // Result: Seamless transition.
-        
-        // Clean up group
-        // We need to move the meshes back to the main container? 
-        // Actually, if we structured the JSX so that these meshes are conditional children, it's messy.
-        // 
-        // Let's use a simpler animation:
-        // Just rotate the specific object refs.
-        
-        const indices = getCubiesForFace(anim.face);
-        indices.forEach(idx => {
-          const mesh = cubiesRef.current[idx];
-          if (mesh) {
-            mesh.rotation.set(0,0,0);
-            mesh.position.copy(new THREE.Vector3(...CUBIE_POSITIONS[idx]));
-            // Apply scale or whatever
-            // We need to reset the transforms because the group rotation modified world matrix?
-            // No, if we rotated the GROUP, and the meshes are children, resetting group resets them.
-            // Wait, if we use `attach`, the meshes are effectively moved.
-            // Let's avoiding `attach` for now and just set `rotation` on the meshes directly?
-            // Rotating a group of objects around a pivot is basically matrix math.
-          }
-        });
-        
-        // Trigger logic update
-        setIsAnimating(false);
-        // We need to call the actual data update now.
-        // But `rotateFace` was called to *start* this? No, we need a callback.
-        // Let's expose a "commit" function.
-        // Actually, the `rotateFace` in store handles logic. We should call it NOW.
-        // But `rotateFace` in store is async?
-        // We will separate the visual trigger.
-      }
+  // Reset selection when phase changes or animation starts
+  useEffect(() => {
+    if (phase !== 'TWIST' || isAnimating) {
+      setSelection(null);
     }
-  });
+  }, [phase, isAnimating]);
+
+  const handleStickerClick = (e: any, face: Face) => {
+    e.stopPropagation();
+    if (phase === 'PLACE') return; // Handled by sticker onClick prop for placement
+    if (phase !== 'TWIST' || isAnimating) return;
+
+    // Left Click Logic:
+    // If the face is already selected, EXECUTE the twist.
+    // If not selected, select it (default CW).
+    if (selection && selection.face === face) {
+        triggerAnimation(selection.face, selection.clockwise);
+    } else {
+        setSelection({ face, clockwise: true });
+    }
+  };
+
+  const handleStickerContextMenu = (e: any, face: Face) => {
+    e.stopPropagation();
+    // Prevent browser context menu handled in CubieSticker via nativeEvent
+    if (phase !== 'TWIST' || isAnimating) return;
+
+    // Right Click Logic:
+    // Toggle direction if selected, or select with default direction if not.
+    if (selection && selection.face === face) {
+        setSelection({ ...selection, clockwise: !selection.clockwise });
+    } else {
+        setSelection({ face, clockwise: true }); // Default to CW on first select
+    }
+  };
+
+  const handleBackgroundClick = () => {
+    if (phase === 'TWIST' && selection) setSelection(null);
+  };
 
   // External trigger for animation
   const triggerAnimation = (face: Face, clockwise: boolean) => {
-    if (animationRef.current) return;
-    
-    // 1. Identify cubies
-    const indices = getCubiesForFace(face);
-    
-    // 2. Add them to the rotation group?
-    // In R3F, we can't easily reparent imperatively without losing React state unless we use `createPortal` or `attach`.
-    // `attach` is for properties.
-    // Let's use a pure Three.js approach for the animation frame.
-    // We will manually apply rotation matrices to the objects in `useFrame`.
-    
-    // Better: Just spin the group.
-    // But the group needs to contain *only* the relevant cubies.
-    // The relevant cubies change every move.
-    // So we can't have a static static React tree structure for the group.
-    
-    // SOLUTION:
-    // We won't physically rotate the meshes.
-    // We will just wait 300ms, then swap colors. 
-    // "Make a 3D game with this as an animation".
-    // Okay, simple approach:
-    // We only animate the *camera*? No, that rotates the whole cube.
-    // We animate the whole cube for the move? No.
-    // We will do the "Color Swap" immediately but trigger a GSAP flip?
-    
-    // Let's do the standard Three.js Object3D rotation.
-    // 1. Create a temporary THREE.Group in the scene (ref).
-    // 2. `group.add(cubieMesh)` for all involved cubies. (This reparents them in Three.js graph, removing from previous parent).
-    // 3. Animate group rotation.
-    // 4. On complete: `parent.add(cubieMesh)` (move them back). Reset their transforms (position/rotation) to their grid slots.
-    // 5. Update store colors.
-    
-    // This works perfectly in Three.js. R3F might fight it if it tries to re-render.
-    // But since `cubiesRef` are stable, R3F shouldn't blow up if we imperatively move them, as long as we put them back before R3F tries to unmount them.
+    if (useGameStore.getState().isAnimating) return;
+    useGameStore.getState().setIsAnimating(true);
+    setSelection(null); // Clear UI
     
     const group = groupRef.current;
     if (!group) return;
     
-    // Define the axis and pivot
     group.rotation.set(0,0,0);
     group.position.set(0,0,0);
     
     const movingCubieIndices = getCubiesForFace(face);
     const movingMeshes = movingCubieIndices.map(i => cubiesRef.current[i]).filter(Boolean) as THREE.Object3D[];
     
-    // Parent is the main group usually.
-    const parent = movingMeshes[0].parent; 
+    if (movingMeshes.length === 0) {
+       useGameStore.getState().setIsAnimating(false);
+       return;
+    }
+
+    const originalParent = movingMeshes[0].parent;
+    movingMeshes.forEach(mesh => group.attach(mesh));
     
-    // Reparent to pivot group
-    movingMeshes.forEach(mesh => {
-      group.attach(mesh);
-    });
-    
-    // Animate
     const startTime = Date.now();
-    const duration = 300; // ms
+    const duration = 300; 
     
     const animate = () => {
       const now = Date.now();
       const p = Math.min((now - startTime) / duration, 1);
-      
-      // Easing
       const ease = 1 - Math.pow(1 - p, 3);
-      
       const angle = (Math.PI / 2) * (clockwise ? -1 : 1) * ease;
       
       if (face === 'U') group.rotation.y = angle;
-      if (face === 'D') group.rotation.y = -angle; // D is bottom
-      if (face === 'R') group.rotation.x = angle;
-      if (face === 'L') group.rotation.x = -angle;
-      if (face === 'F') group.rotation.z = angle;
-      if (face === 'B') group.rotation.z = -angle;
+      else if (face === 'D') group.rotation.y = -angle;
+      else if (face === 'R') group.rotation.x = angle;
+      else if (face === 'L') group.rotation.x = -angle;
+      else if (face === 'F') group.rotation.z = angle;
+      else if (face === 'B') group.rotation.z = -angle;
 
       if (p < 1) {
         requestAnimationFrame(animate);
       } else {
-        // Finished
-        // 1. Update logic (colors swap)
-        useGameStore.getState().rotateFace(face, clockwise); // This updates `stickers` state, causing re-render
-        
-        // 2. Put meshes back and reset transform
-        // We assume re-render might happen. 
-        // If we reset transforms NOW, the colors haven't changed yet?
-        // `rotateFace` is synchronous in effect (Zustand updates).
-        // But React render is async.
-        
-        // To avoid glitch:
-        // We wait for store update. 
-        // But actually, we just need to reset the physical objects to their grid slots.
-        // The colors will change on next render.
-        
-        movingMeshes.forEach(mesh => {
-           parent?.attach(mesh);
-           // Reset to precise grid position (snap)
-           // We need to know original index. We can find it from the mesh userData or just iterate?
-           // We have `movingCubieIndices`.
-        });
-        
-        // Force snap all to grid
+        useGameStore.getState().rotateFace(face, clockwise); 
+        if (originalParent) movingMeshes.forEach(mesh => originalParent.attach(mesh));
         CUBIE_POSITIONS.forEach((pos, idx) => {
             const m = cubiesRef.current[idx];
             if (m) {
@@ -389,35 +139,27 @@ export const RubiksCube = () => {
                 m.scale.set(1,1,1);
             }
         });
-        
         group.rotation.set(0,0,0);
       }
     };
     animate();
   };
-
-  // Expose trigger to store?
-  // Easier: The store just says "isAnimating". 
-  // We need a way to catch the user interaction. 
-  // Interaction -> Visual Component -> Trigger Anim -> Store Update.
-  // We will pass `triggerAnimation` to the HUD/Controls via a context or just export a hook?
-  // Let's make `window.triggerCubeRotation` or use a Custom Event for simplicity in this structure.
   
   useEffect(() => {
     const handleRotate = (e: CustomEvent) => {
-      if (isAnimating) return;
       triggerAnimation(e.detail.face, e.detail.clockwise);
     };
     window.addEventListener('cube-rotate', handleRotate as any);
-    return () => window.removeEventListener('cube-rotate', handleRotate as any);
-  }, [isAnimating]);
+    window.addEventListener('pointermissed', handleBackgroundClick); 
+    return () => {
+        window.removeEventListener('cube-rotate', handleRotate as any);
+        window.removeEventListener('pointermissed', handleBackgroundClick);
+    }
+  }, [selection]); 
 
   return (
     <group>
-      {/* Pivot Group for animations */}
       <group ref={groupRef} />
-      
-      {/* The 27 Cubies */}
       {CUBIE_POSITIONS.map((pos, i) => (
         <Cubie 
           key={i} 
@@ -426,31 +168,101 @@ export const RubiksCube = () => {
           stickers={stickers} 
           placeTile={placeTile}
           phase={phase}
-          ref={(el) => (cubiesRef.current[i] = el)}
+          onStickerClick={handleStickerClick}
+          onStickerContextMenu={handleStickerContextMenu}
+          ref={(el: THREE.Object3D | null) => { cubiesRef.current[i] = el; }}
         />
       ))}
+      {selection && (
+          <TwistArrow 
+             face={selection.face} 
+             clockwise={selection.clockwise} 
+             onClick={() => triggerAnimation(selection.face, selection.clockwise)}
+             onContextMenu={(e: any) => {
+                // Allow toggling direction by right clicking the arrow too
+                e.stopPropagation();
+                // We must preventDefault on the canvas event or handle it here?
+                // R3F events don't have preventDefault on the synthetic event directly for context menu?
+                // Actually they do if it's mapped. But the parent listener on window might trigger.
+                // It is safe to just flip state.
+                setSelection({ ...selection, clockwise: !selection.clockwise });
+             }}
+          />
+      )}
     </group>
   );
 };
 
+const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, clockwise: boolean, onClick: () => void, onContextMenu?: any }) => {
+    const pos = FACE_CENTERS[face];
+    
+    // Determine rotation of the arrow mesh to align with face
+    let rot: [number, number, number] = [0, 0, 0];
+    switch(face) {
+        case 'U': rot = [-Math.PI/2, 0, 0]; break; 
+        case 'D': rot = [Math.PI/2, 0, 0]; break; 
+        case 'F': rot = [0, 0, 0]; break; 
+        case 'B': rot = [0, Math.PI, 0]; break;
+        case 'R': rot = [0, Math.PI/2, 0]; break;
+        case 'L': rot = [0, -Math.PI/2, 0]; break;
+    }
+
+    // CCW arrow geometry by default. Scale X by -1 to make it CW.
+    const scale: [number, number, number] = [clockwise ? -1 : 1, 1, 1];
+
+    return (
+        <group position={pos} rotation={rot as any}>
+            <group 
+                scale={scale} 
+                onClick={(e) => { e.stopPropagation(); onClick(); }}
+                onContextMenu={(e) => { 
+                    e.nativeEvent.preventDefault();
+                    e.stopPropagation(); 
+                    onContextMenu && onContextMenu(e); 
+                }}
+            >
+               {/* Arrow Body (Ring Segment) */}
+               {/* Arc from Bottom (-PI/2) to Left (PI) => CCW path */}
+               <mesh>
+                 <ringGeometry args={[0.75, 1.05, 48, 1, -Math.PI/2, Math.PI * 1.5]} />
+                 <meshBasicMaterial 
+                    color="#fbbf24" 
+                    side={THREE.DoubleSide} 
+                    toneMapped={false}
+                 />
+               </mesh>
+               
+               {/* Arrow Head (Triangle) */}
+               {/* Positioned at the end of the arc (Angle PI => Left side of circle: x=-0.9, y=0) */}
+               {/* Mean radius = (0.75+1.05)/2 = 0.9 */}
+               <mesh position={[-0.9, 0, 0]} rotation={[0,0, -Math.PI/2]}> 
+                  {/* Circle with 3 segments is a triangle. 
+                      Default: Point is at Angle 0 (Right).
+                      Rotate -90 deg => Point Down. 
+                      Tangent at Left side of CCW circle is Down. Correct.
+                  */}
+                  <circleGeometry args={[0.3, 3]} />
+                  <meshBasicMaterial 
+                      color="#fbbf24" 
+                      side={THREE.DoubleSide}
+                      toneMapped={false}
+                  />
+               </mesh>
+
+               {/* Hit area for easier clicking */}
+               <mesh visible={false}>
+                  <circleGeometry args={[1.3, 16]} />
+               </mesh>
+            </group>
+        </group>
+    );
+};
+
 // Individual Cubie containing black box + relevant stickers
-const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase }: any, ref: any) => {
+const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase, onStickerClick, onStickerContextMenu }: any, ref: any) => {
   const [x, y, z] = position;
   
-  // Determine which stickers belong to this cubie
-  // Faces: U(y=1), D(y=-1), R(x=1), L(x=-1), F(z=1), B(z=-1)
-  
-  // Mapping logic:
-  // U: 0-8. Grid on y=1. 
-  //    x goes -1..1 (col 0..2). z goes -1..1 (row 2..0 - wait, U face coordinates).
-  //    U indices: 
-  //    0(-1, 1, -1), 1(0, 1, -1), 2(1, 1, -1)
-  //    3(-1, 1, 0),  4(0, 1, 0),  5(1, 1, 0)
-  //    6(-1, 1, 1),  7(0, 1, 1),  8(1, 1, 1)
-  //    Note: My previous Sticker geometry logic assumed specific grid. Let's align.
-  
   const getStickerIndex = (face: Face): number | null => {
-    // Check if this cubie is on the face
     if (face === 'U' && y !== 1) return null;
     if (face === 'D' && y !== -1) return null;
     if (face === 'L' && x !== -1) return null;
@@ -458,74 +270,14 @@ const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase }:
     if (face === 'F' && z !== 1) return null;
     if (face === 'B' && z !== -1) return null;
 
-    // Calculate local index 0-8
     let col = 0, row = 0;
     
-    // U: x(-1..1), z(-1..1) -> Map to 0..8
-    // U row 0 is z=-1 (back). row 2 is z=1 (front).
-    // U col 0 is x=-1 (left). col 2 is x=1 (right).
-    // Index = row * 3 + col
-    if (face === 'U') {
-        col = x + 1; // -1->0, 0->1, 1->2
-        row = z + 1; // -1->0, 0->1, 1->2 (Wait, standard U face usually has row 0 at top/back? Yes)
-        // Adjust for standard texture mapping if needed.
-        // Let's use: Top-Left is (-1, -1). 
-        // 0:(-1,-1), 1:(0,-1), 2:(1,-1)
-        // 3:(-1,0)...
-        return row * 3 + col; 
-    }
-    
-    // L: z(-1..1), y(-1..1). x is fixed -1.
-    // L face usually: col is z? row is y?
-    // Let's say col goes Back->Front (z: -1->1)? Or Front->Back?
-    // Let's stick to standard unfolding.
-    // L0 is Top-Left of L face. Top is y=1. Left is z=-1 (Back).
-    // So row 0 is y=1. row 2 is y=-1.
-    // col 0 is z=-1. col 2 is z=1.
-    if (face === 'L') {
-        col = z + 1;
-        row = 1 - y;
-        return 9 + row * 3 + col;
-    }
-    
-    // F: x(-1..1), y(-1..1). z fixed 1.
-    // F0 Top-Left. Top y=1. Left x=-1.
-    if (face === 'F') {
-        col = x + 1;
-        row = 1 - y;
-        return 18 + row * 3 + col;
-    }
-    
-    // R: z(-1..1), y(-1..1). x fixed 1.
-    // R0 Top-Left. Top y=1. Left is z=1 (Front).
-    // Wait, looking at Right face, Left is Front side. Right is Back side.
-    // col 0 is z=1. col 2 is z=-1.
-    if (face === 'R') {
-        col = 1 - z;
-        row = 1 - y;
-        return 27 + row * 3 + col;
-    }
-    
-    // B: x(-1..1), y(-1..1). z fixed -1.
-    // B0 Top-Left. Top y=1. Left is x=1 (Right side of cube, viewed from back).
-    // View B face: Left is x=1. Right is x=-1.
-    if (face === 'B') {
-        col = 1 - x;
-        row = 1 - y;
-        return 36 + row * 3 + col;
-    }
-    
-    // D: x(-1..1), z(-1..1). y fixed -1.
-    // D0 Top-Left. Top is z=1 (Front). Left is x=-1.
-    // View D face: Top is Front.
-    // row 0 is z=1. row 2 is z=-1.
-    // col 0 is x=-1. col 2 is x=1.
-    if (face === 'D') {
-        col = x + 1;
-        row = 1 - z;
-        return 45 + row * 3 + col;
-    }
-    
+    if (face === 'U') { col = x + 1; row = z + 1; return row * 3 + col; }
+    if (face === 'L') { col = z + 1; row = 1 - y; return 9 + row * 3 + col; }
+    if (face === 'F') { col = x + 1; row = 1 - y; return 18 + row * 3 + col; }
+    if (face === 'R') { col = 1 - z; row = 1 - y; return 27 + row * 3 + col; }
+    if (face === 'B') { col = 1 - x; row = 1 - y; return 36 + row * 3 + col; }
+    if (face === 'D') { col = x + 1; row = 1 - z; return 45 + row * 3 + col; }
     return null;
   };
 
@@ -542,11 +294,12 @@ const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase }:
     <group position={position} ref={ref}>
       <RoundedBox args={[0.98, 0.98, 0.98]} radius={0.05} smoothness={4}>
         <meshStandardMaterial 
-          color="#333" 
-          roughness={0.2} 
-          metalness={0.6}
+          color="#d0e5ff" 
+          roughness={0.05} 
+          metalness={0.2}
           transparent={true}
-          opacity={0.5}
+          opacity={0.15}
+          side={THREE.DoubleSide}
         />
       </RoundedBox>
       {myStickers.map(({ face, idx }) => (
@@ -554,15 +307,28 @@ const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase }:
           key={face} 
           face={face} 
           color={stickers[idx].color}
-          onClick={() => placeTile(idx)}
+          onClick={(e: any) => {
+              if (phase === 'PLACE') {
+                 // Place logic
+                 if (stickers[idx].owner === null) placeTile(idx);
+              } else {
+                 // Twist selection logic (Left Click)
+                 onStickerClick(e, face);
+              }
+          }}
+          onContextMenu={(e: any) => {
+              // Twist direction toggle (Right Click)
+              onStickerContextMenu(e, face);
+          }}
           active={phase === 'PLACE' && stickers[idx].owner === null}
+          canHover={phase === 'PLACE' || phase === 'TWIST'}
         />
       ))}
     </group>
   );
 });
 
-const CubieSticker = ({ face, color, onClick, active }: any) => {
+const CubieSticker = ({ face, color, onClick, onContextMenu, active, canHover }: any) => {
   const [hover, setHover] = useState(false);
   
   // Position sticker slightly off surface
@@ -583,17 +349,26 @@ const CubieSticker = ({ face, color, onClick, active }: any) => {
     <mesh 
       position={pos} 
       rotation={rot as any} 
-      onClick={(e) => { e.stopPropagation(); active && onClick(); }}
-      onPointerOver={(e) => { e.stopPropagation(); active && setHover(true); }}
+      onClick={(e) => { 
+          e.stopPropagation(); 
+          onClick(e);
+      }}
+      onContextMenu={(e) => {
+          e.nativeEvent.preventDefault(); // Stop standard context menu
+          e.stopPropagation();
+          onContextMenu && onContextMenu(e);
+      }}
+      onPointerOver={(e) => { e.stopPropagation(); canHover && setHover(true); }}
       onPointerOut={(e) => { e.stopPropagation(); setHover(false); }}
     >
       <planeGeometry args={[0.85, 0.85]} />
       <meshStandardMaterial 
-        color={active && hover ? HOVER_COLOR : color} 
+        color={active && hover ? HOVER_COLOR : (hover && canHover) ? new THREE.Color(color).clone().lerp(new THREE.Color('#ffffff'), 0.2) : color} 
         roughness={0.2} 
         metalness={0.0}
         transparent={true}
-        opacity={0.9}
+        opacity={0.8}
+        side={THREE.DoubleSide}
       />
     </mesh>
   );

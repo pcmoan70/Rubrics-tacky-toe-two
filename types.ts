@@ -1,3 +1,4 @@
+
 export type PlayerId = 'P1' | 'P2';
 
 export interface PlayerConfig {
@@ -21,5 +22,6 @@ export interface ScoreBreakdown {
   lines: number;
   squares: number;
   faces: number;
+  crosses: number;
   total: number;
 }
