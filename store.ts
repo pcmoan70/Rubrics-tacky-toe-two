@@ -1,7 +1,7 @@
 
 import { create } from 'zustand';
-import { GamePhase, PlayerId, ScoreBreakdown, StickerState, Face } from './types';
-import { PLAYERS, DEFAULT_STICKER_COLOR, FACE_OFFSETS } from './constants';
+import { GamePhase, PlayerId, ScoreBreakdown, StickerState, Face, GameMode } from './types';
+import { PLAYERS, DEFAULT_STICKER_COLOR, FACE_OFFSETS, MAX_PER_COLOR } from './constants';
 
 interface GameState {
   stickers: StickerState[]; // Array of 54 stickers
@@ -11,13 +11,20 @@ interface GameState {
   selectedColorIndex: number; // 0, 1, or 2 (index into player's color array)
   winner: PlayerId | 'DRAW' | null;
   isAnimating: boolean;
+  gameMode: GameMode;
+  colorCounts: Record<PlayerId, number[]>; // Track usage of each color index
+  lastPlacedStickerIndex: number | null; // Track the most recently placed tile for highlighting
+  consecutiveSkips: number; // Track consecutive skips to enforce limit
   
   // Actions
   selectColor: (index: number) => void;
   placeTile: (index: number) => void;
   rotateFace: (face: Face, clockwise: boolean) => Promise<void>;
+  skipTwist: () => void;
   setIsAnimating: (animating: boolean) => void;
-  resetGame: () => void;
+  resetGame: () => void; // Goes back to SETUP
+  startGame: (mode: GameMode) => void; // Starts the game
+  setGameMode: (mode: GameMode) => void; // Helper (less used now)
 }
 
 // Initial empty board
@@ -166,17 +173,29 @@ const getRotatedIndices = (stickers: StickerState[], face: Face, clockwise: bool
 export const useGameStore = create<GameState>((set, get) => ({
   stickers: createInitialStickers(),
   currentPlayer: 'P1',
-  phase: 'PLACE',
+  phase: 'SETUP',
   scores: { P1: {lines:0, squares:0, faces:0, crosses:0, total:0}, P2: {lines:0, squares:0, faces:0, crosses:0, total:0} },
   selectedColorIndex: 0,
   winner: null,
   isAnimating: false,
+  gameMode: 'MULTI',
+  colorCounts: { P1: [0,0,0], P2: [0,0,0] },
+  lastPlacedStickerIndex: null,
+  consecutiveSkips: 0,
 
   selectColor: (index) => set({ selectedColorIndex: index }),
 
   placeTile: (index) => {
-    const { phase, stickers, currentPlayer, selectedColorIndex } = get();
+    const { phase, stickers, currentPlayer, selectedColorIndex, gameMode, colorCounts } = get();
+    // Allow auto-placement in RANDOM mode even if owner is null (validation happened before calling)
     if (phase !== 'PLACE' || stickers[index].owner !== null) return;
+
+    // Check limits for MULTI mode
+    if (gameMode === 'MULTI') {
+        if (colorCounts[currentPlayer][selectedColorIndex] >= MAX_PER_COLOR) {
+            return; // Limit reached
+        }
+    }
 
     const newStickers = [...stickers];
     const playerConfig = PLAYERS[currentPlayer];
@@ -185,11 +204,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       color: playerConfig.colors[selectedColorIndex],
     };
 
+    // Update counts
+    const newColorCounts = { 
+        ...colorCounts, 
+        [currentPlayer]: [...colorCounts[currentPlayer]] 
+    };
+    newColorCounts[currentPlayer][selectedColorIndex]++;
+
     const newScores = calculateScores(newStickers);
     set({
       stickers: newStickers,
       phase: 'TWIST',
       scores: newScores,
+      colorCounts: newColorCounts,
+      lastPlacedStickerIndex: index
     });
   },
 
@@ -197,12 +225,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { phase, stickers, currentPlayer } = get();
     if (phase !== 'TWIST') return;
 
-    set({ isAnimating: true });
+    // Reset consecutive skips because a move was made
+    set({ isAnimating: true, consecutiveSkips: 0 });
     
     // Slight delay is handled by animation duration in Cube component mostly, 
     // but the store update happens after 'animation finished' callback in Cube.tsx.
     
     const newStickers = getRotatedIndices(stickers, face, clockwise);
+    
     const newScores = calculateScores(newStickers);
     
     const isFull = newStickers.every(s => s.owner !== null);
@@ -225,18 +255,82 @@ export const useGameStore = create<GameState>((set, get) => ({
       phase: nextPhase,
       currentPlayer: nextPlayer,
       winner,
-      isAnimating: false
+      isAnimating: false,
+      lastPlacedStickerIndex: null // Clear highlight after twist
+    });
+  },
+
+  skipTwist: () => {
+    const { phase, stickers, currentPlayer, scores, consecutiveSkips } = get();
+    if (phase !== 'TWIST') return;
+
+    const newSkips = consecutiveSkips + 1;
+
+    // Check excessive skipping condition: > 2 skips means the current player loses
+    if (newSkips > 2) {
+       const winner = currentPlayer === 'P1' ? 'P2' : 'P1';
+       set({
+           winner,
+           phase: 'GAME_OVER',
+           consecutiveSkips: newSkips
+       });
+       return;
+    }
+
+    const isFull = stickers.every(s => s.owner !== null);
+    let winner: PlayerId | 'DRAW' | null = null;
+
+    if (isFull) {
+      const s1 = scores.P1.total;
+      const s2 = scores.P2.total;
+      if (s1 > s2) winner = 'P1';
+      else if (s2 > s1) winner = 'P2';
+      else winner = 'DRAW';
+    }
+
+    const nextPlayer = isFull ? currentPlayer : (currentPlayer === 'P1' ? 'P2' : 'P1');
+    const nextPhase = isFull ? 'GAME_OVER' : 'PLACE';
+
+    set({
+      phase: nextPhase,
+      currentPlayer: nextPlayer,
+      winner,
+      lastPlacedStickerIndex: null, // Clear highlight
+      consecutiveSkips: newSkips
     });
   },
   
   setIsAnimating: (animating) => set({ isAnimating: animating }),
 
-  resetGame: () => set({
+  startGame: (mode) => set({
+    gameMode: mode,
     stickers: createInitialStickers(),
     currentPlayer: 'P1',
     phase: 'PLACE',
     scores: { P1: {lines:0, squares:0, faces:0, crosses:0, total:0}, P2: {lines:0, squares:0, faces:0, crosses:0, total:0} },
     winner: null,
-    isAnimating: false
-  })
+    isAnimating: false,
+    colorCounts: { P1: [0,0,0], P2: [0,0,0] },
+    selectedColorIndex: 0,
+    lastPlacedStickerIndex: null,
+    consecutiveSkips: 0
+  }),
+
+  // Helper used if we wanted to switch mid-game (but we reset now)
+  setGameMode: (mode) => set({ gameMode: mode }),
+
+  resetGame: () => {
+    set({
+        phase: 'SETUP', // Go back to Setup
+        stickers: createInitialStickers(),
+        currentPlayer: 'P1',
+        scores: { P1: {lines:0, squares:0, faces:0, crosses:0, total:0}, P2: {lines:0, squares:0, faces:0, crosses:0, total:0} },
+        winner: null,
+        isAnimating: false,
+        colorCounts: { P1: [0,0,0], P2: [0,0,0] },
+        selectedColorIndex: 0,
+        lastPlacedStickerIndex: null,
+        consecutiveSkips: 0
+    });
+  }
 }));

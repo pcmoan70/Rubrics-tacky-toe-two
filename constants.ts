@@ -1,3 +1,4 @@
+
 import { PlayerConfig } from './types';
 
 export const PLAYERS: Record<string, PlayerConfig> = {
@@ -17,6 +18,7 @@ export const PLAYERS: Record<string, PlayerConfig> = {
 
 export const DEFAULT_STICKER_COLOR = '#333333';
 export const HOVER_COLOR = '#555555';
+export const MAX_PER_COLOR = 9;
 
 // Map logical face indices (0-5) to 3D orientation
 // Order in state: U, L, F, R, B, D (Standard unfolding)

@@ -1,5 +1,6 @@
+
 import React, { useRef, useState, useEffect } from 'react';
-import { useThree } from '@react-three/fiber';
+import { useThree, useFrame } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGameStore } from '../store';
@@ -22,8 +23,18 @@ const FACE_CENTERS: Record<Face, THREE.Vector3> = {
   L: new THREE.Vector3(-1.6, 0, 0),
 };
 
+const getFaceFromIndex = (index: number): Face => {
+  if (index >= 0 && index <= 8) return 'U';
+  if (index >= 9 && index <= 17) return 'L';
+  if (index >= 18 && index <= 26) return 'F';
+  if (index >= 27 && index <= 35) return 'R';
+  if (index >= 36 && index <= 44) return 'B';
+  return 'D';
+};
+
 export const RubiksCube = () => {
-  const { stickers, phase, placeTile, rotateFace, setIsAnimating, isAnimating } = useGameStore();
+  const { stickers, phase, placeTile, rotateFace, setIsAnimating, isAnimating, gameMode, lastPlacedStickerIndex } = useGameStore();
+  const { camera } = useThree();
   
   const cubiesRef = useRef<(THREE.Object3D | null)[]>([]);
   const groupRef = useRef<THREE.Group>(null);
@@ -31,6 +42,9 @@ export const RubiksCube = () => {
   // Selection state for Twist Phase
   // stores which face is selected and the pending direction
   const [selection, setSelection] = useState<{ face: Face, clockwise: boolean } | null>(null);
+
+  // Auto-placement state
+  const [targetCameraPos, setTargetCameraPos] = useState<THREE.Vector3 | null>(null);
 
   // Helper: Get cubies belonging to a face
   const getCubiesForFace = (face: Face) => {
@@ -53,6 +67,49 @@ export const RubiksCube = () => {
       setSelection(null);
     }
   }, [phase, isAnimating]);
+
+  // --- RANDOM MODE LOGIC ---
+  useEffect(() => {
+    if (gameMode === 'RANDOM' && phase === 'PLACE' && !isAnimating) {
+        // 1. Find all empty spots
+        const emptyIndices = stickers.map((s, i) => s.owner === null ? i : -1).filter(i => i !== -1);
+        
+        if (emptyIndices.length > 0) {
+            setIsAnimating(true); // Lock interaction
+            
+            // 2. Pick Random
+            const rand = Math.floor(Math.random() * emptyIndices.length);
+            const targetIndex = emptyIndices[rand];
+            const targetFace = getFaceFromIndex(targetIndex);
+
+            // 3. Determine camera position for that face
+            // We'll calculate a vector that looks at the center of that face from a distance
+            const faceNormal = FACE_CENTERS[targetFace].clone().normalize();
+            const distance = 9; // Approx current camera distance
+            // Position camera along the normal, plus a bit of 'up' to keep it interesting, but mostly head-on
+            const targetPos = faceNormal.multiplyScalar(distance).add(new THREE.Vector3(faceNormal.x ? 0 : 2, faceNormal.y ? 0 : 2, faceNormal.z ? 0 : 2).multiplyScalar(0.2));
+            
+            setTargetCameraPos(targetPos);
+
+            // 4. Wait for camera move, then Place
+            // The useFrame hook below handles the lerp. We just need a timeout to trigger the actual placement.
+            setTimeout(() => {
+                placeTile(targetIndex);
+                setIsAnimating(false);
+                setTargetCameraPos(null);
+            }, 1200); // 1.2s for camera swing + pause
+        }
+    }
+  }, [gameMode, phase, stickers]); // Dependencies ensure this runs when phase switches to PLACE
+
+  // Smooth Camera Animation
+  useFrame((state, delta) => {
+      if (targetCameraPos) {
+          state.camera.position.lerp(targetCameraPos, 3 * delta);
+          state.camera.lookAt(0, 0, 0);
+      }
+  });
+
 
   const handleStickerClick = (e: any, face: Face) => {
     e.stopPropagation();
@@ -168,6 +225,8 @@ export const RubiksCube = () => {
           stickers={stickers} 
           placeTile={placeTile}
           phase={phase}
+          gameMode={gameMode}
+          lastPlacedIndex={lastPlacedStickerIndex}
           onStickerClick={handleStickerClick}
           onStickerContextMenu={handleStickerContextMenu}
           ref={(el: THREE.Object3D | null) => { cubiesRef.current[i] = el; }}
@@ -179,12 +238,7 @@ export const RubiksCube = () => {
              clockwise={selection.clockwise} 
              onClick={() => triggerAnimation(selection.face, selection.clockwise)}
              onContextMenu={(e: any) => {
-                // Allow toggling direction by right clicking the arrow too
                 e.stopPropagation();
-                // We must preventDefault on the canvas event or handle it here?
-                // R3F events don't have preventDefault on the synthetic event directly for context menu?
-                // Actually they do if it's mapped. But the parent listener on window might trigger.
-                // It is safe to just flip state.
                 setSelection({ ...selection, clockwise: !selection.clockwise });
              }}
           />
@@ -207,7 +261,6 @@ const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, c
         case 'L': rot = [0, -Math.PI/2, 0]; break;
     }
 
-    // CCW arrow geometry by default. Scale X by -1 to make it CW.
     const scale: [number, number, number] = [clockwise ? -1 : 1, 1, 1];
 
     return (
@@ -221,8 +274,6 @@ const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, c
                     onContextMenu && onContextMenu(e); 
                 }}
             >
-               {/* Arrow Body (Ring Segment) */}
-               {/* Arc from Bottom (-PI/2) to Left (PI) => CCW path */}
                <mesh>
                  <ringGeometry args={[0.75, 1.05, 48, 1, -Math.PI/2, Math.PI * 1.5]} />
                  <meshBasicMaterial 
@@ -232,15 +283,7 @@ const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, c
                  />
                </mesh>
                
-               {/* Arrow Head (Triangle) */}
-               {/* Positioned at the end of the arc (Angle PI => Left side of circle: x=-0.9, y=0) */}
-               {/* Mean radius = (0.75+1.05)/2 = 0.9 */}
                <mesh position={[-0.9, 0, 0]} rotation={[0,0, -Math.PI/2]}> 
-                  {/* Circle with 3 segments is a triangle. 
-                      Default: Point is at Angle 0 (Right).
-                      Rotate -90 deg => Point Down. 
-                      Tangent at Left side of CCW circle is Down. Correct.
-                  */}
                   <circleGeometry args={[0.3, 3]} />
                   <meshBasicMaterial 
                       color="#fbbf24" 
@@ -249,7 +292,6 @@ const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, c
                   />
                </mesh>
 
-               {/* Hit area for easier clicking */}
                <mesh visible={false}>
                   <circleGeometry args={[1.3, 16]} />
                </mesh>
@@ -259,7 +301,7 @@ const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, c
 };
 
 // Individual Cubie containing black box + relevant stickers
-const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase, onStickerClick, onStickerContextMenu }: any, ref: any) => {
+const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase, gameMode, lastPlacedIndex, onStickerClick, onStickerContextMenu }: any, ref: any) => {
   const [x, y, z] = position;
   
   const getStickerIndex = (face: Face): number | null => {
@@ -309,8 +351,8 @@ const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase, o
           color={stickers[idx].color}
           onClick={(e: any) => {
               if (phase === 'PLACE') {
-                 // Place logic
-                 if (stickers[idx].owner === null) placeTile(idx);
+                 // Place logic: Only allow if not random mode
+                 if (gameMode !== 'RANDOM' && stickers[idx].owner === null) placeTile(idx);
               } else {
                  // Twist selection logic (Left Click)
                  onStickerClick(e, face);
@@ -320,15 +362,16 @@ const Cubie = React.forwardRef(({ index, position, stickers, placeTile, phase, o
               // Twist direction toggle (Right Click)
               onStickerContextMenu(e, face);
           }}
-          active={phase === 'PLACE' && stickers[idx].owner === null}
+          active={phase === 'PLACE' && stickers[idx].owner === null && gameMode !== 'RANDOM'}
           canHover={phase === 'PLACE' || phase === 'TWIST'}
+          isLastPlaced={lastPlacedIndex === idx}
         />
       ))}
     </group>
   );
 });
 
-const CubieSticker = ({ face, color, onClick, onContextMenu, active, canHover }: any) => {
+const CubieSticker = ({ face, color, onClick, onContextMenu, active, canHover, isLastPlaced }: any) => {
   const [hover, setHover] = useState(false);
   
   // Position sticker slightly off surface
@@ -346,30 +389,38 @@ const CubieSticker = ({ face, color, onClick, onContextMenu, active, canHover }:
   }
 
   return (
-    <mesh 
-      position={pos} 
-      rotation={rot as any} 
-      onClick={(e) => { 
-          e.stopPropagation(); 
-          onClick(e);
-      }}
-      onContextMenu={(e) => {
-          e.nativeEvent.preventDefault(); // Stop standard context menu
-          e.stopPropagation();
-          onContextMenu && onContextMenu(e);
-      }}
-      onPointerOver={(e) => { e.stopPropagation(); canHover && setHover(true); }}
-      onPointerOut={(e) => { e.stopPropagation(); setHover(false); }}
-    >
-      <planeGeometry args={[0.85, 0.85]} />
-      <meshStandardMaterial 
-        color={active && hover ? HOVER_COLOR : (hover && canHover) ? new THREE.Color(color).clone().lerp(new THREE.Color('#ffffff'), 0.2) : color} 
-        roughness={0.2} 
-        metalness={0.0}
-        transparent={true}
-        opacity={0.8}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+    <group position={pos} rotation={rot as any}>
+        <mesh 
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                onClick(e);
+            }}
+            onContextMenu={(e) => {
+                e.nativeEvent.preventDefault(); // Stop standard context menu
+                e.stopPropagation();
+                onContextMenu && onContextMenu(e);
+            }}
+            onPointerOver={(e) => { e.stopPropagation(); canHover && setHover(true); }}
+            onPointerOut={(e) => { e.stopPropagation(); setHover(false); }}
+        >
+            <planeGeometry args={[0.85, 0.85]} />
+            <meshStandardMaterial 
+                color={active && hover ? HOVER_COLOR : (hover && canHover) ? new THREE.Color(color).clone().lerp(new THREE.Color('#ffffff'), 0.2) : color} 
+                roughness={0.2} 
+                metalness={0.0}
+                transparent={true}
+                opacity={0.8}
+                side={THREE.DoubleSide}
+            />
+        </mesh>
+        
+        {/* Bright edges for the last placed tile */}
+        {isLastPlaced && (
+            <mesh position={[0, 0, 0.01]} rotation={[0, 0, Math.PI / 4]}>
+               <ringGeometry args={[0.53, 0.60, 4]} />
+               <meshBasicMaterial color="#ffffff" toneMapped={false} side={THREE.DoubleSide} />
+            </mesh>
+        )}
+    </group>
   );
 };

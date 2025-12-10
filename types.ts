@@ -16,7 +16,9 @@ export interface StickerState {
   color: string; // The hex color rendered
 }
 
-export type GamePhase = 'PLACE' | 'TWIST' | 'GAME_OVER';
+export type GamePhase = 'SETUP' | 'PLACE' | 'TWIST' | 'GAME_OVER';
+
+export type GameMode = 'SINGLE' | 'MULTI' | 'RANDOM';
 
 export interface ScoreBreakdown {
   lines: number;
@@ -24,4 +26,21 @@ export interface ScoreBreakdown {
   faces: number;
   crosses: number;
   total: number;
+}
+
+// Augment the global JSX namespace to include React Three Fiber elements
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      ambientLight: any;
+      pointLight: any;
+      group: any;
+      mesh: any;
+      meshStandardMaterial: any;
+      meshBasicMaterial: any;
+      planeGeometry: any;
+      circleGeometry: any;
+      ringGeometry: any;
+    }
+  }
 }
