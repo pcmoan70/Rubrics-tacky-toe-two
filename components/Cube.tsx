@@ -187,7 +187,16 @@ export const RubiksCube = () => {
         requestAnimationFrame(animate);
       } else {
         useGameStore.getState().rotateFace(face, clockwise); 
-        if (originalParent) movingMeshes.forEach(mesh => originalParent.attach(mesh));
+        // Restore parentage
+        if (originalParent) {
+            movingMeshes.forEach(mesh => {
+                 // Double check mesh still exists and we have a valid parent
+                 if (mesh) originalParent.attach(mesh);
+            });
+        }
+        
+        // Reset local transforms of cubies to their grid slots
+        // This is crucial because 'attach' modifies transforms
         CUBIE_POSITIONS.forEach((pos, idx) => {
             const m = cubiesRef.current[idx];
             if (m) {
@@ -248,7 +257,8 @@ export const RubiksCube = () => {
 };
 
 const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, clockwise: boolean, onClick: () => void, onContextMenu?: any }) => {
-    const pos = FACE_CENTERS[face];
+    // Clone or spread to ensure we pass a clean primitive array/vector that doesn't conflict with read-only props
+    const { x, y, z } = FACE_CENTERS[face];
     
     // Determine rotation of the arrow mesh to align with face
     let rot: [number, number, number] = [0, 0, 0];
@@ -264,7 +274,7 @@ const TwistArrow = ({ face, clockwise, onClick, onContextMenu }: { face: Face, c
     const scale: [number, number, number] = [clockwise ? -1 : 1, 1, 1];
 
     return (
-        <group position={pos} rotation={rot as any}>
+        <group position={[x, y, z]} rotation={rot as any}>
             <group 
                 scale={scale} 
                 onClick={(e) => { e.stopPropagation(); onClick(); }}

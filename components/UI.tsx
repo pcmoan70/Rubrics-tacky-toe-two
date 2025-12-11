@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useGameStore } from '../store';
 import { PLAYERS, MAX_PER_COLOR } from '../constants';
-import { Crown, SkipForward, Menu, Gamepad2, Grid3X3, X, Shuffle, AlertTriangle } from 'lucide-react';
+import { Crown, SkipForward, Menu, Gamepad2, Grid3X3, X, Shuffle, AlertTriangle, Users, Copy, Wifi, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
 import { Face } from '../types';
 
@@ -20,10 +20,17 @@ export const UI = () => {
     gameMode,
     colorCounts,
     startGame,
-    consecutiveSkips
+    consecutiveSkips,
+    mpStatus,
+    myId,
+    hostGame,
+    joinGame,
+    isHost
   } = useGameStore();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [onlineMenuState, setOnlineMenuState] = useState<'MAIN' | 'HOST' | 'JOIN'>('MAIN');
+  const [joinId, setJoinId] = useState('');
 
   const player = PLAYERS[currentPlayer];
   
@@ -39,6 +46,60 @@ export const UI = () => {
                     <p className="text-gray-400 text-xs">Twist. Place. Dominate.</p>
                 </div>
                 
+                {/* ONLINE MODE LOBBY */}
+                {onlineMenuState !== 'MAIN' || mpStatus !== 'DISCONNECTED' ? (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 mb-4 justify-center">
+                            <Wifi className="w-4 h-4 text-green-400 animate-pulse" />
+                            <span className="text-white font-bold text-sm">Online Multiplayer</span>
+                        </div>
+
+                        {onlineMenuState === 'HOST' && mpStatus === 'WAITING' && (
+                            <div className="bg-black/40 p-4 rounded-xl border border-white/10">
+                                <p className="text-gray-400 text-xs mb-2">Share this code with your friend:</p>
+                                <div className="flex items-center gap-2 bg-black/60 p-2 rounded-lg border border-white/5 mb-2">
+                                    <code className="text-yellow-400 font-mono text-sm break-all flex-1 text-center select-all">{myId}</code>
+                                    <button onClick={() => navigator.clipboard.writeText(myId || '')} className="p-1 hover:text-white text-gray-400">
+                                        <Copy className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <div className="text-[10px] text-gray-500 animate-pulse">Waiting for opponent to join...</div>
+                            </div>
+                        )}
+
+                        {onlineMenuState === 'JOIN' && (mpStatus === 'DISCONNECTED' || mpStatus === 'INIT') && (
+                            <div className="space-y-2">
+                                <input 
+                                    type="text" 
+                                    placeholder="Enter Host Code"
+                                    value={joinId}
+                                    onChange={(e) => setJoinId(e.target.value)}
+                                    disabled={mpStatus === 'INIT'}
+                                    className="w-full bg-black/40 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500 disabled:opacity-50"
+                                />
+                                <button 
+                                    onClick={() => joinGame(joinId)}
+                                    disabled={!joinId || mpStatus === 'INIT'}
+                                    className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black font-bold py-2 rounded-lg text-sm transition-colors"
+                                >
+                                    {mpStatus === 'INIT' ? 'Connecting...' : 'Connect & Play'}
+                                </button>
+                            </div>
+                        )}
+                         
+                        {(mpStatus === 'CONNECTING') && (
+                             <div className="text-white text-sm">Connecting...</div>
+                        )}
+
+                        <button 
+                            onClick={() => { setOnlineMenuState('MAIN'); resetGame(); }}
+                            className="text-xs text-gray-500 hover:text-white mt-4 underline"
+                        >
+                            Back to Menu
+                        </button>
+                    </div>
+                ) : (
+                /* MAIN MENU */
                 <div className="space-y-3">
                     <button 
                         onClick={() => startGame('SINGLE')}
@@ -49,7 +110,7 @@ export const UI = () => {
                                <Gamepad2 className="w-5 h-5 text-white" />
                            </div>
                            <div className="text-left">
-                               <h3 className="text-white font-bold text-sm">One Color (Classic)</h3>
+                               <h3 className="text-white font-bold text-sm">One Color (Local)</h3>
                                <p className="text-gray-400 text-[10px]">Red vs Blue. Unlimited tiles.</p>
                            </div>
                         </div>
@@ -64,31 +125,44 @@ export const UI = () => {
                                <Grid3X3 className="w-5 h-5 text-white" />
                            </div>
                            <div className="text-left">
-                               <h3 className="text-white font-bold text-sm">Three Colors (Strategic)</h3>
+                               <h3 className="text-white font-bold text-sm">Three Colors (Local)</h3>
                                <p className="text-gray-400 text-[10px]">3 Colors per player, 9 tiles of each.</p>
+                           </div>
+                        </div>
+                    </button>
+                    
+                    <button 
+                        onClick={() => { setOnlineMenuState('HOST'); hostGame(); }}
+                        className="w-full group relative overflow-hidden bg-gradient-to-r from-green-500 to-emerald-600 p-[1px] rounded-xl transition-transform hover:scale-105 active:scale-95"
+                    >
+                        <div className="bg-gray-900 rounded-[10px] p-3 flex items-center gap-3 w-full transition-colors group-hover:bg-gray-800">
+                           <div className="bg-white/10 p-2 rounded-full flex-shrink-0">
+                               <Users className="w-5 h-5 text-white" />
+                           </div>
+                           <div className="text-left">
+                               <h3 className="text-white font-bold text-sm">Host Game (Online)</h3>
+                               <p className="text-gray-400 text-[10px]">Create a room for a friend.</p>
                            </div>
                         </div>
                     </button>
 
                     <button 
-                        onClick={() => startGame('RANDOM')}
-                        className="w-full group relative overflow-hidden bg-gradient-to-r from-purple-500 to-indigo-600 p-[1px] rounded-xl transition-transform hover:scale-105 active:scale-95"
+                        onClick={() => { setOnlineMenuState('JOIN'); resetGame(); }}
+                        className="w-full group relative overflow-hidden bg-gradient-to-r from-gray-600 to-gray-500 p-[1px] rounded-xl transition-transform hover:scale-105 active:scale-95"
                     >
                         <div className="bg-gray-900 rounded-[10px] p-3 flex items-center gap-3 w-full transition-colors group-hover:bg-gray-800">
                            <div className="bg-white/10 p-2 rounded-full flex-shrink-0">
-                               <Shuffle className="w-5 h-5 text-white" />
+                               <ArrowRight className="w-5 h-5 text-white" />
                            </div>
                            <div className="text-left">
-                               <h3 className="text-white font-bold text-sm">Random Mode</h3>
-                               <p className="text-gray-400 text-[10px]">System places tiles. You twist.</p>
+                               <h3 className="text-white font-bold text-sm">Join Game (Online)</h3>
+                               <p className="text-gray-400 text-[10px]">Enter a code to join.</p>
                            </div>
                         </div>
                     </button>
+                    
                 </div>
-
-                <div className="mt-6 text-[10px] text-gray-500 uppercase tracking-widest">
-                    Select a mode to begin
-                </div>
+                )}
             </div>
         </div>
       );
@@ -99,23 +173,27 @@ export const UI = () => {
     <div className="absolute inset-0 pointer-events-none">
       {/* Header / Scoreboard - Absolute Top */}
       <div className="absolute top-0 left-0 w-full p-4 md:p-8 flex justify-between items-start pointer-events-auto z-10">
-        {/* Player 1 Score */}
-        <ScoreCard pid="P1" active={currentPlayer === 'P1'} score={scores.P1} />
+        <ScoreCard pid="P1" active={currentPlayer === 'P1'} score={scores.P1} isYou={mpStatus === 'CONNECTED' && isHost} />
         
-        {/* Center: Title Only */}
         <div className="flex flex-col items-center gap-2">
             <div className="bg-black/80 backdrop-blur-md text-white px-6 py-3 rounded-xl border border-white/10 shadow-2xl text-center hidden md:block">
               <h1 className="text-xl font-bold tracking-wider bg-gradient-to-r from-pink-500 to-yellow-500 bg-clip-text text-transparent">TactiCube</h1>
               <div className="text-xs text-gray-400 mt-1">
-                  {phase === 'PLACE' 
-                    ? (gameMode === 'RANDOM' ? 'SYSTEM PLACING TILE...' : 'PLACE A TILE') 
-                    : phase === 'TWIST' ? 'TWIST A FACE' : 'GAME OVER'}
+                  {mpStatus === 'CONNECTED' && (
+                      <span className={clsx("font-bold mr-2", isHost ? (currentPlayer==='P1' ? 'text-green-400' : 'text-red-400') : (currentPlayer==='P2' ? 'text-green-400' : 'text-red-400'))}>
+                          {isHost ? (currentPlayer==='P1' ? "YOUR TURN" : "OPPONENT'S TURN") : (currentPlayer==='P2' ? "YOUR TURN" : "OPPONENT'S TURN")}
+                      </span>
+                  )}
+                  <span>
+                    {phase === 'PLACE' 
+                        ? (gameMode === 'RANDOM' ? 'SYSTEM PLACING TILE...' : 'PLACE A TILE') 
+                        : phase === 'TWIST' ? 'TWIST A FACE' : 'GAME OVER'}
+                  </span>
               </div>
             </div>
         </div>
 
-        {/* Player 2 Score */}
-        <ScoreCard pid="P2" active={currentPlayer === 'P2'} score={scores.P2} />
+        <ScoreCard pid="P2" active={currentPlayer === 'P2'} score={scores.P2} isYou={mpStatus === 'CONNECTED' && !isHost} />
       </div>
 
       {/* Winner Overlay */}
@@ -133,7 +211,7 @@ export const UI = () => {
                 onClick={resetGame}
                 className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 px-8 rounded-full transition-all transform hover:scale-105"
                 >
-                Play Again
+                Main Menu
                 </button>
             </div>
           </div>
@@ -143,7 +221,6 @@ export const UI = () => {
       {/* Bottom Controls - Absolute Bottom Center */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 pointer-events-auto z-10 w-full max-w-md px-4">
         
-        {/* Phase Indicator & Instruction (Mobile mainly) */}
         <div className="md:hidden bg-black/70 px-4 py-2 rounded-full text-white text-sm font-bold border border-white/20 mb-1">
              {phase === 'PLACE' 
                 ? (gameMode === 'RANDOM' ? 'System Placing...' : 'Phase 1: Place Tile') 
@@ -158,25 +235,27 @@ export const UI = () => {
             </p>
             <div className="flex gap-2">
               {player.colors.map((c, idx) => {
-                  // If Single Mode, only show index 0 (Red/Blue)
                   if (gameMode === 'SINGLE' && idx > 0) return null;
 
                   const count = colorCounts[currentPlayer][idx];
                   const remaining = MAX_PER_COLOR - count;
                   const isDisabled = gameMode === 'MULTI' && remaining <= 0;
+                  
+                  // Multiplayer: Disable if not your turn
+                  const isMyTurn = mpStatus === 'CONNECTED' ? (isHost && currentPlayer === 'P1') || (!isHost && currentPlayer === 'P2') : true;
+                  const disabledFinal = isDisabled || !isMyTurn;
 
                   return (
                     <button
                         key={c}
-                        onClick={() => !isDisabled && selectColor(idx)}
-                        disabled={isDisabled}
+                        onClick={() => !disabledFinal && selectColor(idx)}
+                        disabled={disabledFinal}
                         className={clsx(
                             "relative w-8 h-8 md:w-9 md:h-9 rounded-full border-2 transition-all transform shadow-lg flex items-center justify-center group",
                             selectedColorIndex === idx ? "border-white scale-110 ring-2 ring-white/50" : "border-transparent opacity-80 hover:scale-105",
-                            isDisabled && "opacity-30 cursor-not-allowed grayscale"
+                            disabledFinal && "opacity-30 cursor-not-allowed grayscale"
                         )}
                         style={{ backgroundColor: c }}
-                        title={gameMode === 'MULTI' ? `${remaining} remaining` : undefined}
                     >
                         {gameMode === 'MULTI' && (
                             <span className="absolute -bottom-1 -right-1 bg-black/70 text-white text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white/20">
@@ -201,15 +280,14 @@ export const UI = () => {
                 </div>
             )}
             <button 
-               onClick={skipTwist}
-               disabled={isAnimating}
+               onClick={() => skipTwist(false)}
+               disabled={isAnimating || (mpStatus === 'CONNECTED' && !((isHost && currentPlayer === 'P1') || (!isHost && currentPlayer === 'P2')))}
                className={clsx(
                    "h-12 px-8 rounded-xl border border-white/10 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-lg",
                    consecutiveSkips >= 2 
                      ? "bg-red-900/90 hover:bg-red-800 text-red-100 border-red-500/30" 
                      : "bg-gray-800/90 hover:bg-gray-700 text-white backdrop-blur-md"
                )}
-               title={consecutiveSkips >= 2 ? "Warning: Skipping again causes a loss!" : "Skip Twist Phase"}
             >
                <SkipForward className="w-4 h-4" />
                <span className="text-xs font-bold uppercase">
@@ -223,7 +301,6 @@ export const UI = () => {
       {/* Menu - Absolute Bottom Left */}
       {!winner && (
          <div className="absolute bottom-6 left-6 pointer-events-auto z-50 flex flex-col-reverse gap-4 items-start">
-           {/* Button */}
            <button
              onClick={() => setIsMenuOpen(!isMenuOpen)}
              className={clsx(
@@ -232,12 +309,10 @@ export const UI = () => {
                  ? "bg-white text-black border-white rotate-90" 
                  : "bg-black/50 text-white/70 border-white/10 hover:bg-white/10 hover:text-white hover:scale-110"
              )}
-             title="Main Menu"
            >
              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
            </button>
         
-           {/* Menu Content */}
            {isMenuOpen && (
               <div className="bg-black/90 backdrop-blur-xl border border-white/10 p-2 rounded-2xl shadow-2xl flex flex-col min-w-[160px] animate-slide-up origin-bottom-left">
                  <div className="px-3 py-2 border-b border-white/5 mb-1">
@@ -251,42 +326,4 @@ export const UI = () => {
                  </button>
                  <button 
                    onClick={() => { resetGame(); setIsMenuOpen(false); }}
-                   className="text-left px-3 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-                 >
-                   Quit to Title
-                 </button>
-              </div>
-           )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const ScoreCard = ({ pid, active, score }: any) => {
-  const config = PLAYERS[pid];
-  return (
-    <div className={clsx(
-      "bg-black/80 backdrop-blur rounded-xl p-3 md:p-4 border transition-all duration-300 min-w-[100px] shadow-lg",
-      active ? `border-[${config.baseColor}] shadow-[0_0_15px_${config.baseColor}40]` : "border-white/5 opacity-80"
-    )}
-    style={{ borderColor: active ? config.baseColor : undefined }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-3 h-3 rounded-full" style={{ background: config.baseColor }} />
-        <span className={clsx("font-bold text-sm md:text-base", active ? "text-white" : "text-gray-400")}>
-          {config.name}
-        </span>
-      </div>
-      <div className="text-2xl md:text-3xl font-black text-white mb-1">
-        {score.total}
-      </div>
-      <div className="text-[10px] text-gray-500 flex flex-col gap-0.5">
-        <div className="flex justify-between"><span>Lines</span><span>{score.lines}</span></div>
-        <div className="flex justify-between"><span>Squares</span><span>{score.squares}</span></div>
-        <div className="flex justify-between"><span>Crosses</span><span>{score.crosses}</span></div>
-        <div className="flex justify-between"><span>Faces</span><span>{score.faces}</span></div>
-      </div>
-    </div>
-  );
-}
+                   className="text-left px-3 py-2.5 text-sm font-medium text-red-400 hover:

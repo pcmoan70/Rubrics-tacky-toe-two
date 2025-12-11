@@ -1,3 +1,4 @@
+import { ThreeElements } from '@react-three/fiber';
 
 export type PlayerId = 'P1' | 'P2';
 
@@ -20,6 +21,8 @@ export type GamePhase = 'SETUP' | 'PLACE' | 'TWIST' | 'GAME_OVER';
 
 export type GameMode = 'SINGLE' | 'MULTI' | 'RANDOM';
 
+export type MultiplayerStatus = 'DISCONNECTED' | 'INIT' | 'WAITING' | 'CONNECTING' | 'CONNECTED';
+
 export interface ScoreBreakdown {
   lines: number;
   squares: number;
@@ -28,19 +31,8 @@ export interface ScoreBreakdown {
   total: number;
 }
 
-// Augment the global JSX namespace to include React Three Fiber elements
 declare global {
   namespace JSX {
-    interface IntrinsicElements {
-      ambientLight: any;
-      pointLight: any;
-      group: any;
-      mesh: any;
-      meshStandardMaterial: any;
-      meshBasicMaterial: any;
-      planeGeometry: any;
-      circleGeometry: any;
-      ringGeometry: any;
-    }
+    interface IntrinsicElements extends ThreeElements {}
   }
 }
