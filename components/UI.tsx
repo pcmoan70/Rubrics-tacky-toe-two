@@ -4,7 +4,33 @@ import { useGameStore } from '../store';
 import { PLAYERS, MAX_PER_COLOR } from '../constants';
 import { Crown, SkipForward, Menu, Gamepad2, Grid3X3, X, Shuffle, AlertTriangle, Users, Copy, Wifi, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
-import { Face } from '../types';
+import { Face, PlayerId, ScoreBreakdown } from '../types';
+
+const ScoreCard = ({ pid, active, score, isYou }: { pid: PlayerId, active: boolean, score: ScoreBreakdown, isYou?: boolean }) => {
+  const player = PLAYERS[pid];
+  return (
+    <div className={clsx(
+      "relative flex flex-col items-center p-3 rounded-xl border backdrop-blur-md transition-all duration-300 min-w-[100px]",
+      active ? "bg-gray-800/80 border-white/40 scale-105 shadow-lg shadow-white/5" : "bg-black/40 border-white/5 opacity-50 scale-95"
+    )}>
+      <div className="flex items-center gap-1.5 mb-1">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: player.baseColor }} />
+          <span className={clsx("text-xs font-bold uppercase truncate max-w-[80px]", active ? "text-white" : "text-gray-400")}>
+              {player.name}
+          </span>
+          {isYou && <span className="bg-blue-500 text-[8px] text-white px-1 rounded font-bold">ME</span>}
+      </div>
+      <div className="text-2xl font-black text-white leading-none mb-1">
+          {score.total}
+      </div>
+      <div className="flex gap-2 text-[9px] text-gray-500 font-mono">
+          <span title="Lines">L:{score.lines}</span>
+          <span title="Squares">S:{score.squares}</span>
+          <span title="Faces">F:{score.faces}</span>
+      </div>
+    </div>
+  );
+};
 
 export const UI = () => {
   const { 
@@ -326,4 +352,14 @@ export const UI = () => {
                  </button>
                  <button 
                    onClick={() => { resetGame(); setIsMenuOpen(false); }}
-                   className="text-left px-3 py-2.5 text-sm font-medium text-red-400 hover:
+                   className="text-left px-3 py-2.5 text-sm font-medium text-red-400 hover:bg-white/10 rounded-xl transition-colors"
+                 >
+                   Quit / Reset
+                 </button>
+              </div>
+           )}
+         </div>
+      )}
+    </div>
+  );
+};

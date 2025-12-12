@@ -1,3 +1,4 @@
+
 import { ThreeElements } from '@react-three/fiber';
 
 export type PlayerId = 'P1' | 'P2';
@@ -32,6 +33,12 @@ export interface ScoreBreakdown {
 }
 
 declare global {
+  namespace JSX {
+    interface IntrinsicElements extends ThreeElements {}
+  }
+}
+
+declare module 'react' {
   namespace JSX {
     interface IntrinsicElements extends ThreeElements {}
   }

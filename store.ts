@@ -252,7 +252,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     peer.on('open', (id: string) => set({ mpStatus: 'WAITING', myId: id, isHost: true }));
     peer.on('connection', (connection: any) => {
         conn = connection;
-        set({ mpStatus: 'CONNECTED', peerId: conn.peer });
+        // Wait for connection to be fully open before sending data
+        conn.on('open', () => {
+            set({ mpStatus: 'CONNECTED', peerId: conn.peer });
+            get().startGame('SINGLE'); // Host is P1 in 'SINGLE' mode logic (but it's actually network play)
+            conn.send({ type: 'SYNC_START', mode: 'SINGLE' });
+        });
+        
         conn.on('data', (data: any) => {
             const state = get();
             if (data.type === 'PLACE') { set({ selectedColorIndex: data.colorIdx }); state.placeTile(data.index, true); }
@@ -262,9 +268,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             else if (data.type === 'SKIP') { state.skipTwist(true); }
         });
+        
         conn.on('close', () => { set({ mpStatus: 'DISCONNECTED', winner: null, phase: 'SETUP' }); alert("Opponent disconnected."); });
-        get().startGame('SINGLE');
-        conn.send({ type: 'SYNC_START', mode: 'SINGLE' });
+        conn.on('error', (err: any) => console.error("Connection error:", err));
     });
     peer.on('error', (err: any) => { console.error(err); set({ mpStatus: 'DISCONNECTED' }); alert("Connection Error: " + err.type); });
   },
@@ -275,9 +281,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ mpStatus: 'INIT', isHost: false });
     peer.on('open', (id: string) => {
         set({ myId: id });
-        conn = peer.connect(hostId);
+        const cleanId = hostId.trim(); // Trim potential whitespace
+        conn = peer.connect(cleanId, { reliable: true });
         set({ mpStatus: 'CONNECTING' });
-        conn.on('open', () => set({ mpStatus: 'CONNECTED', peerId: hostId }));
+        
+        conn.on('open', () => set({ mpStatus: 'CONNECTED', peerId: cleanId }));
+        
         conn.on('data', (data: any) => {
             const state = get();
             if (data.type === 'SYNC_START') { state.startGame(data.mode); }
@@ -288,7 +297,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             else if (data.type === 'SKIP') { state.skipTwist(true); }
         });
+        
         conn.on('close', () => { set({ mpStatus: 'DISCONNECTED', winner: null, phase: 'SETUP' }); alert("Host disconnected."); });
+        conn.on('error', (err: any) => console.error("Connection error:", err));
     });
     peer.on('error', (err: any) => { console.error(err); set({ mpStatus: 'DISCONNECTED' }); alert("Connection Error (Check ID): " + err.type); });
   },
