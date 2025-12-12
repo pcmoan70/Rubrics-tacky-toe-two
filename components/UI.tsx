@@ -70,6 +70,7 @@ export const UI = () => {
                         TactiCube 
                     </h1>
                     <p className="text-gray-400 text-xs">Twist. Place. Dominate.</p>
+                    <p className="text-gray-400 text-xs">@P-Perra</p>
                 </div>
                 
                 {/* ONLINE MODE LOBBY */}
